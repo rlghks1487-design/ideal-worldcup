@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>이상형 월드컵</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏆</text></svg>">
+
+  <!-- ① 새로 추가: 드롭 영역 꾸미기 (CSS) -->
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #121212;
+      --panel: #2a2a2a;
+      --text: #eeeeee;
+      --subtext: #aaaaaa;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+    }
+    h1 {
+      text-align: center;
+    }
+    #dropZone {
+      border: 3px dashed #666;
+      border-radius: 12px;
+      padding: 40px;
+      text-align: center;
+      color: var(--subtext);
+      margin: 16px 0;
+    }
+    #dropZone.dragover {
+      border-color: #4a7dff;
+      background: #1e2a44;
+    }
+    #arena {
+      display: flex;
+      gap: 16px;
+      margin-top: 24px;
+    }
+    #arena .side {
+      flex: 1;
+      min-width: 0;
+      position: relative;
+    }
+    #arena img {
+      display: block;
+      width: 100%;
+      height: 600px;
+      object-fit: contain;
+      background: var(--panel);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: transform 0.15s;
+    }
+    .byeBadge {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      padding: 2px 8px;
+      border-radius: 6px;
+      background: rgba(0, 0, 0, 0.7);
+      color: var(--subtext);
+      font-size: 13px;
+      pointer-events: none;
+    }
+    #arena img:hover {
+      transform: scale(1.03);
+    }
+    #status {
+      font-size: 24px;
+      font-weight: bold;
+      text-align: center;
+      margin-top: 24px;
+      white-space: pre-line;
+    }
+    .row {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      margin-top: 24px;
+    }
+    .card {
+      text-align: center;
+      min-width: 0;
+    }
+    .card p {
+      margin: 6px 0;
+      font-size: 18px;
+    }
+    .card img {
+      max-width: 100%;
+      object-fit: contain;
+      background: var(--panel);
+      border-radius: 12px;
+    }
+    .card.champion img {
+      border: 6px solid gold;
+    }
+    button {
+      font-size: 18px;
+      padding: 10px 20px;
+      cursor: pointer;
+    }
+    #endButtons {
+      text-align: center;
+      margin-top: 24px;
+    }
+    #undoArea {
+      text-align: center;
+      margin-top: 16px;
+    }
+    button:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+  </style>
+</head>
+
+<body>
+<h1 id="pageTitle">이상형 월드컵</h1>
+
+  <!-- 준비 화면: 사진 불러오기 -->
+  <div id="setup">
+    <div id="dropZone">여기에 사진을 끌어다 놓으세요</div>
+    <input type="file" id="fileInput" accept="image/*" multiple>
+    <p id="count">불러온 사진: 0장</p>
+    <div id="preview"></div>
+    <button id="startButton">대결 시작!</button>
+    <button id="clearButton">사진 전부 지우기</button>
+  </div>
+
+  <!-- 대결 화면 -->
+  <div id="game" hidden>
+    <p id="status"></p>
+    <div id="arena"></div>
+      <div id="undoArea">
+      <button id="wildcardButton">🃏 와일드카드 (둘 다 올리기)</button>
+      <button id="undoButton" disabled>↩ 되돌리기</button>
+    </div>
+    <div id="result"></div>
+    <div id="endButtons" hidden>
+      <button id="againButton">같은 사진으로 다시 하기</button>
+      <button id="homeButton">처음으로</button>
+    </div>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    const preview = document.getElementById('preview');
+    const count = document.getElementById('count');
+    const dropZone = document.getElementById('dropZone');  // 새로 추가
+
+    let photos = [];
+    const photoNames = {};  // 사진 주소 → 파일 이름 대응표
+
+    // ③ 바뀐 부분: 사진 추가 코드를 함수로 묶음
+    function addFiles(files) {
+      for (const file of files) {
+        if (!file.type.startsWith('image/')) continue;  // 이미지가 아니면 건너뛰기
+
+        const url = URL.createObjectURL(file);
+        photos.push(url);
+        photoNames[url] = file.name;
+
+        const img = document.createElement('img');
+        img.src = url;
+        img.width = 100;
+        preview.appendChild(img);
+      }
+      count.textContent = '불러온 사진: ' + photos.length + '장';
+    }
+
+    fileInput.addEventListener('change', function () {
+      addFiles(fileInput.files);
+    });
+
+    // ④ 새로 추가: 드래그 앤 드롭
+    dropZone.addEventListener('dragover', function (event) {
+      event.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', function () {
+      dropZone.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', function (event) {
+      event.preventDefault();
+      dropZone.classList.remove('dragover');
+      addFiles(event.dataTransfer.files);
+    });
+
+    // 영역 밖에 실수로 떨어뜨려도 사진이 새 탭으로 열리지 않게 막기
+    window.addEventListener('dragover', function (event) {
+      event.preventDefault();
+    });
+    window.addEventListener('drop', function (event) {
+      event.preventDefault();
+    });
+    // ⑤ 목록의 순서를 무작위로 섞는 함수
+    function shuffle(array) {
+      const result = array.slice();
+      for (let i = result.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [result[i], result[j]] = [result[j], result[i]];
+      }
+      return result;
+    }
+
+    // ⑥ 앞에서부터 두 개씩 묶는 함수
+    function makePairs(list) {
+      const pairs = [];
+      for (let i = 0; i < list.length; i += 2) {
+        pairs.push([list[i], list[i + 1]]);
+      }
+      return pairs;
+    }
+    // ⑥-1 사진 수로 라운드 이름 정하기
+    function roundName(count) {
+      if (count === 2) return '결승';
+      let size = 2;
+      while (size < count) {
+        size *= 2;
+      }
+      return size + '강';
+    }
+    // ⑥-2 화면에 보여줄 라운드 이름 (와일드카드로 반복된 라운드 표시 포함)
+    function roundLabel() {
+      if (roundRepeat === 1) return roundTitle;
+
+      const order = ['', '', '두번째', '세번째', '네번째', '다섯번째'];
+      const word = order[roundRepeat] || (roundRepeat + '번째');
+      return '와일드카드로 인한 ' + word + ' ' + roundTitle;
+    }
+    // ⑦ 화면 요소 찾기와 대결 상태
+    const startButton = document.getElementById('startButton');
+    const statusText = document.getElementById('status');
+    const arena = document.getElementById('arena');
+    const setup = document.getElementById('setup');
+    const game = document.getElementById('game');
+    const endButtons = document.getElementById('endButtons');
+    const againButton = document.getElementById('againButton');
+    const homeButton = document.getElementById('homeButton');
+    const result = document.getElementById('result');
+    const undoButton = document.getElementById('undoButton');
+    const undoArea = document.getElementById('undoArea');
+    const wildcardButton = document.getElementById('wildcardButton');
+    const pageTitle = document.getElementById('pageTitle');
+    let lastState = null;   // 되돌리기용 저장 칸 (직전 상태)
+
+    let currentPairs = [];  // 이번 라운드의 경기 목록
+    let matchIndex = 0;     // 지금 몇 번째 경기인지 (0부터 시작)
+    let winners = [];       // 이번 라운드에서 이긴 사진들
+    let roundTitle = '';    // 이번 라운드 이름 (예: 8강)
+    let roundRepeat = 1;    // 같은 이름의 라운드가 몇 번째인지 (와일드카드로 반복되면 2, 3, ...)
+    let matchCount = 0;     // 이번 라운드의 실제 경기 수 (부전승 제외)
+    let runnerUp = null;    // 준우승 사진
+    let semiLosers = [];    // 4강에서 떨어진 사진들
+    let byePhoto = null;      // 이번 라운드에서 부전승 꼬리표를 붙일 사진
+    let nextByePhoto = null;  // 이번 라운드에서 부전승한 사진 (다음 라운드에 넘겨줄 메모)
+
+    // ⑧ 라운드 시작하기
+        function startRound(list) {
+      byePhoto = nextByePhoto;
+      nextByePhoto = null;
+
+      if (list.length === 1) {
+        showResult(list[0]);
+        return;
+      }
+
+      currentPairs = makePairs(list);
+      matchIndex = 0;
+      winners = [];
+      const name = roundName(list.length);
+      if (name === roundTitle) {
+        roundRepeat++;
+      } else {
+        roundRepeat = 1;
+      }
+      roundTitle = name;
+      matchCount = Math.floor(list.length / 2);
+      showMatch();
+    }
+
+    // ⑨ 지금 경기를 화면에 보여주기
+    function showMatch() {
+      // 이번 라운드 경기를 다 했으면 승자들로 다음 라운드 시작
+      if (matchIndex >= currentPairs.length) {
+        startRound(winners);
+        return;
+      }
+
+      const pair = currentPairs[matchIndex];
+
+      // 상대가 없으면 부전승: 클릭 없이 바로 올라간다
+      if (!pair[1]) {
+        winners.unshift(pair[0]);
+        nextByePhoto = pair[0];
+        matchIndex++;
+        showMatch();
+        return;
+      }
+
+      if (roundTitle === '결승') {
+        statusText.textContent = '결승';
+      } else {
+        statusText.textContent = roundLabel() + ' ' + (matchIndex + 1) + ' / ' + matchCount;
+      }
+      wildcardButton.disabled = (roundTitle === '4강' || roundTitle === '결승');
+      arena.innerHTML = '';
+
+      for (const url of pair) {
+        const side = document.createElement('div');
+        side.classList.add('side');
+
+        const img = document.createElement('img');
+        img.src = url;
+        img.addEventListener('click', function () {
+          pick(url);
+        });
+        side.appendChild(img);
+
+        if (url === byePhoto) {
+          const badge = document.createElement('span');
+          badge.classList.add('byeBadge');
+          badge.textContent = '부전승';
+          side.appendChild(badge);
+        }
+
+        arena.appendChild(side);
+      }
+    }
+
+    function pick(url) {
+      // 되돌리기를 위해, 바뀌기 직전의 상태를 저장
+      saveState();
+
+      const pair = currentPairs[matchIndex];
+
+      // 고르지 않은 쪽이 진 사진
+      let loser;
+      if (url === pair[0]) {
+        loser = pair[1];
+      } else {
+        loser = pair[0];
+      }
+
+      // 결승과 4강에서 진 사진은 따로 기록
+      if (roundTitle === '결승') {
+        runnerUp = loser;
+      } else if (roundTitle === '4강') {
+        semiLosers.push(loser);
+      }
+
+      winners.push(url);
+      matchIndex++;
+      showMatch();
+    }
+
+    // ⑪ 대결 시작 버튼
+    startButton.addEventListener('click', function () {
+      if (photos.length < 2) {
+        alert('사진을 2장 이상 불러와 주세요.');
+        return;
+      }
+      beginGame();
+    });
+    // ⑫ 대결 화면으로 바꾸고 시작하기
+    function beginGame() {
+      setup.hidden = true;
+      pageTitle.hidden = true;
+      game.hidden = false;
+      endButtons.hidden = true;
+      result.innerHTML = '';
+      lastState = null;
+      undoButton.disabled = true;
+      undoArea.hidden = false;
+      runnerUp = null;
+      semiLosers = [];
+      roundTitle = '';
+      startRound(shuffle(photos));
+    }
+
+    // ⑬ 우승 후 버튼들
+    againButton.addEventListener('click', function () {
+      beginGame();
+    });
+
+    homeButton.addEventListener('click', function () {
+      game.hidden = true;
+      setup.hidden = false;
+    });
+        // ⑭ 사진 전부 지우기
+    const clearButton = document.getElementById('clearButton');
+
+    clearButton.addEventListener('click', function () {
+      if (photos.length === 0) return;
+      if (!confirm('불러온 사진을 전부 지울까요?')) return;
+
+      for (const url of photos) {
+        URL.revokeObjectURL(url);
+        delete photoNames[url];
+      }
+
+      photos = [];
+      preview.innerHTML = '';
+      count.textContent = '불러온 사진: 0장';
+      fileInput.value = '';
+    });
+        // ⑮-0 파일 이름에서 확장자 빼기 (고양이.jpg → 고양이)
+    function withoutExtension(fileName) {
+      const dot = fileName.lastIndexOf('.');
+      if (dot <= 0) return fileName;
+      return fileName.slice(0, dot);
+    }
+        // ⑮ 결과 화면에 쓸 카드 하나 만들기 (순위 + 사진 + 파일 이름)
+    function makeCard(url, label, height) {
+      const card = document.createElement('div');
+      card.classList.add('card');
+
+      const title = document.createElement('p');
+      title.textContent = label;
+
+      const img = document.createElement('img');
+      img.src = url;
+      img.style.height = height + 'px';
+
+      const name = document.createElement('p');
+      name.textContent = withoutExtension(photoNames[url]);
+
+      card.append(title, img, name);
+      return card;
+    }
+
+    // ⑯ 카드를 나란히 놓을 줄 하나 만들기
+    function makeRow() {
+      const row = document.createElement('div');
+      row.classList.add('row');
+      result.appendChild(row);
+      return row;
+    }
+
+    // ⑰ 결과 화면 보여주기
+    function showResult(champion) {
+      arena.innerHTML = '';
+      result.innerHTML = '';
+      statusText.textContent = '🏆 최종 결과 🏆';
+
+      const championCard = makeCard(champion, '🥇 우승', 400);
+      championCard.classList.add('champion');
+      makeRow().appendChild(championCard);
+
+      if (runnerUp) {
+        makeRow().appendChild(makeCard(runnerUp, '🥈 준우승', 250));
+      }
+
+      if (semiLosers.length > 0) {
+        const row = makeRow();
+        for (const url of semiLosers) {
+          row.appendChild(makeCard(url, '🥉 4강', 180));
+        }
+      }
+
+      undoArea.hidden = true;
+      pageTitle.hidden = false;
+      endButtons.hidden = false;
+    }
+    // ⑱ 되돌리기: 저장해둔 상태로 덮어쓰고 그 경기를 다시 보여준다
+    function undo() {
+      if (game.hidden || undoArea.hidden || !lastState) return;
+
+      currentPairs = lastState.currentPairs;
+      matchIndex = lastState.matchIndex;
+      winners = lastState.winners;
+      roundTitle = lastState.roundTitle;
+      roundRepeat = lastState.roundRepeat;
+      matchCount = lastState.matchCount;
+      runnerUp = lastState.runnerUp;
+      semiLosers = lastState.semiLosers;
+      byePhoto = lastState.byePhoto;
+
+      lastState = null;
+      undoButton.disabled = true;
+      showMatch();
+    }
+
+    // ⑲ 버튼을 누르면 되돌리기
+    undoButton.addEventListener('click', function () {
+      undo();
+    });
+
+    // ⑳ Ctrl+Z를 누르면 되돌리기
+    document.addEventListener('keydown', function (event) {
+      if ((event.ctrlKey || event.metaKey) && event.code === 'KeyZ') {
+        undo();
+      }
+    });
+        // ㉑ 되돌리기용으로 지금 상태를 저장하는 함수
+    function saveState() {
+      lastState = {
+        currentPairs: currentPairs.slice(),
+        matchIndex: matchIndex,
+        winners: winners.slice(),
+        roundTitle: roundTitle,
+        roundRepeat: roundRepeat,
+        matchCount: matchCount,
+        runnerUp: runnerUp,
+        semiLosers: semiLosers.slice(),
+        byePhoto: byePhoto,
+      };
+      undoButton.disabled = false;
+    }
+
+    // ㉒ 와일드카드: 두 사진을 둘 다 다음 라운드로 올린다
+    function wildcard() {
+      if (roundTitle === '4강' || roundTitle === '결승') return;
+
+      saveState();
+      const pair = currentPairs[matchIndex];
+      winners.push(pair[0], pair[1]);
+      matchIndex++;
+      showMatch();
+    }
+
+    wildcardButton.addEventListener('click', function () {
+      wildcard();
+    });
+  </script>
+</body>
+</html>
