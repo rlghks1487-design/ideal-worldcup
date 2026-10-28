@@ -161,6 +161,7 @@
     </div>
   </div>
 
+  <script src="presets.js"></script>
   <script>
     const fileInput = document.getElementById('fileInput');
     const preview = document.getElementById('preview');
@@ -170,29 +171,10 @@
     let photos = [];
     const photoNames = {};  // 사진 주소 → 파일 이름 대응표
     
-    // ★ 준비된 월드컵 목록: 여기만 고치면 월드컵을 추가하거나 바꿀 수 있어요
-    const presets = [
-      {
-        title: '🍱 점심 메뉴 월드컵',
-        items: [
-          { src: 'presets/lunch/bibim.jpg', name: '비빔밥' },
-          { src: 'presets/lunch/budea.jpg', name: '부대찌개' },
-          { src: 'presets/lunch/burger.jpeg', name: '햄부기' },
-          { src: 'presets/lunch/dubu.jpg', name: '순두부찌개' },
-          { src: 'presets/lunch/gukbob.jpeg', name: '국밥' },
-          { src: 'presets/lunch/guksu.jpg', name: '국수' },
-          { src: 'presets/lunch/katsu.jpg', name: '돈까스' },
-          { src: 'presets/lunch/kimchi.webp', name: '김치찌개' },
-          { src: 'presets/lunch/omurice.webp', name: '오무라이스' },
-          { src: 'presets/lunch/pasta.jpeg', name: '파스타' },
-          { src: 'presets/lunch/pho.jpeg', name: '쌀국수' },
-          { src: 'presets/lunch/pizza.webp', name: '쌀국수' },
-          { src: 'presets/lunch/salad.png', name: '샐러드' },
-          { src: 'presets/lunch/subway.jpg', name: '서브웨이' },
-          { src: 'presets/lunch/sushi.jpeg', name: '초밥' },
-        ],
-      },
-    ];
+    // ★ 준비된 월드컵 목록
+    //   GitHub가 presets 폴더를 보고 presets.js를 자동으로 만들어줘요.
+    //   내 컴퓨터에는 presets.js가 없어서 빈 목록이 돼요.
+    const presets = window.PRESETS || [];
 
     // ③ 바뀐 부분: 사진 추가 코드를 함수로 묶음
     function addFiles(files) {
@@ -580,7 +562,9 @@
     // ㉓ 준비된 월드컵 버튼 만들기
     const presetButtons = document.getElementById('presetButtons');
     const presetLabels = {};  // 준비된 월드컵 사진 주소 → 화면에 띄울 이름
-
+    const presetArea = document.getElementById('presetArea');
+    presetArea.hidden = (presets.length === 0);
+    
     for (const preset of presets) {
       const list = [];
       for (const item of preset.items) {
